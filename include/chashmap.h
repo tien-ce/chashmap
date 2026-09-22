@@ -1,0 +1,72 @@
+#ifndef CHASHMAP_H
+#define CHASHMAP_H
+
+#include <stddef.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define MIN_HASH_SIZE 16
+/* -------------------- Opaque Types & Callbacks -------------------- */
+
+/**
+ * @brief Opaque pointer representing the Hash Map structure.
+ * Memory details are hidden inside the implementation file to ensure encapsulation.
+ */
+typedef struct CHASHMAP_STRUCT chashmap_t;
+
+/**
+ * @brief Destructor callback function pointer.
+ * Automatically invoked by the library on the payload parameter when an element
+ * is overwritten, removed, or when the entire map is destroyed.
+ */
+typedef void (*chashmap_free_cb)(void *payload);
+
+/* -------------------- Public API -------------------- */
+
+/**
+ * @brief Allocate and initialize a new Hash Map on the heap.
+ * @param initial_capacity Initial capacity of the buckets array.
+ * @param free_func Callback for payload deallocation (can be NULL).
+ * @return Pointer to the initialized hash map.
+ */
+chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func);
+
+/**
+ * @brief Insert or update a key-value pair.
+ * The key string is automatically duplicated to ensure independent ownership.
+ * @param map Pointer to the hash map.
+ * @param key Identifier string.
+ * @param value Void pointer carrying the payload data.
+ */
+void chashmap_set(chashmap_t *map, const char *key, void *value);
+
+/**
+ * @brief Retrieve payload data based on the key.
+ * @param map Pointer to the hash map.
+ * @param key Identifier string to look up.
+ * @return Payload pointer if found, or NULL if not present.
+ */
+void *chashmap_get(chashmap_t *map, const char *key);
+
+/**
+ * @brief Remove an element from the hash map.
+ * @param map Pointer to the hash map.
+ * @param key Identifier string of the element to remove.
+ * @return true if successfully removed, false if key not found.
+ */
+bool chashmap_remove(chashmap_t *map, const char *key);
+
+/**
+ * @brief Clean up all data and destroy the hash map structure.
+ * @param map Pointer to the hash map.
+ */
+void chashmap_destroy(chashmap_t *map);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CHASHMAP_H */
