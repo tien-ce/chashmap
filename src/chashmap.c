@@ -1,19 +1,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
 #include "chashmap.h"
 
-/* -------------------- Internal ultilities decleration-------------------- */
+/* -------------------- Internal Utilities Declaration -------------------- */
 
-/* Define the macro based on whether the setting above is active */
+/* Define the logger macro based on whether the log flag is active */
 #ifdef CHASHMAP_LOG_ENABLED
-    // The macro accepts a format string and any number of variables
+    /* The macro accepts a format string and any number of variables */
     #define CHASHMAP_LOG(format, ...) printf(format, ##__VA_ARGS__)
 #else
-    // If disabled, the macro evaluates to nothing (takes 0 bytes of flash memory)
+    /* If disabled, the macro evaluates to nothing */
     #define CHASHMAP_LOG(format, ...) 
 #endif
 
+/* Define the debug macro based on whether the debug flag is active */
+#ifdef CHASHMAP_DEBUG_ENABLED
+    /* The macro accepts a format string and any number of variables */
+    #define CHASHMAP_DEBUG(format, ...) printf(format, ##__VA_ARGS__)
+#else
+    /* If disabled, the macro evaluates to nothing */
+    #define CHASHMAP_DEBUG(format, ...) 
+#endif
 /**
  * @brief DJB2 hash algorithm.
  * Generates a uniform hash code for the given string key.
@@ -43,10 +52,10 @@ struct CHASHMAP_STRUCT {
     chashmap_entry_t **buckets;    /* Dynamic array of pointers serving as the hash table buckets */
 };
 
-/* -------------------- Public API Implementations (Stubs) -------------------- */
+/* -------------------- Public API Implementations -------------------- */
 /**
- * @brief Allocate and initialize a new Hash Map on the heap. */
-
+ * @brief Allocate and initialize a new Hash Map on the heap.
+ */
 chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func) {
     if (initial_capacity <= 0)
     {
@@ -59,8 +68,8 @@ chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func)
         return NULL;
     }
 
-    /* Allocate the buckets, each bucket is one pointer to the entry that contains user pointer */
-    map->buckets = calloc(initial_capacity, sizeof(chashmap_entry_t*)); // Use calloc to implicitly point to NULL each bucket
+    /* Allocate the buckets array. Use calloc to implicitly initialize all pointers to NULL. */
+    map->buckets = calloc(initial_capacity, sizeof(chashmap_entry_t*));
     if (map->buckets == NULL)
     {
         free(map);
@@ -74,6 +83,9 @@ chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func)
     return map;
 }
 
+/**
+ * @brief Insert or update a key-value pair in the hash map.
+ */
 void chashmap_set(chashmap_t *map, const char *key, void *value) {
     /* Check safety */
     if (map == NULL || key == NULL)
@@ -93,9 +105,9 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
             return;
         }
     }
-    /* Insert logic */
     /* calculate the hash code and apply modulo to get the bucket index */
     size_t bucket_index = hash_function(key, map->capacity);
+    CHASHMAP_DEBUG("[SET] Key '%s' hashed to bucket %zu\n", key, bucket_index);
     
     /* get the bucket (first entry in chain) in hash table corresponding to key */
     chashmap_entry_t *bucket = map->buckets[bucket_index];
@@ -106,6 +118,7 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
         /* check if the entry matches the key */
         if(strcmp(key, bucket->key) == 0)
         {
+            CHASHMAP_DEBUG("      -> Key '%s' exists, updating value.\n", key);
             /* Free old value by user destructor define */
             if (map->free_func) {
                 map->free_func(bucket->value);
@@ -114,6 +127,7 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
             bucket->value = value;
             return;
         }
+        CHASHMAP_DEBUG("      -> Collision detected, moving to next entry in bucket %zu.\n", bucket_index);
         /* move to next entry */
         bucket = bucket->next;
     }
@@ -131,10 +145,11 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
     new_entry->next = map->buckets[bucket_index];
     map->buckets[bucket_index] = new_entry;
     map->size++;
+    CHASHMAP_DEBUG("      -> Inserted new node '%s' at head of bucket %zu.\n", key, bucket_index);
 }
 
 /**
- * @brief Retrieve payload data based on the key 
+ * @brief Retrieve payload data based on the key.
  */
 void *chashmap_get(chashmap_t *map, const char *key) {
     if (map == NULL || key == NULL) {
@@ -143,6 +158,7 @@ void *chashmap_get(chashmap_t *map, const char *key) {
 
     /* calculate the hash code and apply modulo to get the bucket index */
     size_t bucket_index = hash_function(key, map->capacity);
+    CHASHMAP_DEBUG("[GET] Looking for '%s', mapped to bucket %zu\n", key, bucket_index);
     
     /* get the bucket (first entry in chain) in hash table corresponding to key */
     chashmap_entry_t *bucket = map->buckets[bucket_index];
@@ -153,6 +169,7 @@ void *chashmap_get(chashmap_t *map, const char *key) {
         /* check if the entry matches the key */
         if(strcmp(key, bucket->key) == 0)
         {
+            CHASHMAP_DEBUG("      -> Found '%s' in bucket %zu!\n", key, bucket_index);
             return bucket->value;
         }
         /* move to next entry */
@@ -162,16 +179,97 @@ void *chashmap_get(chashmap_t *map, const char *key) {
     return NULL;
 }
 
+/**
+ * @brief Remove an element from the hash map and free its resources.
+ */
 bool chashmap_remove(chashmap_t *map, const char *key) {
-    /* Implementation pending */
-    (void)map;
-    (void)key;
+    /* Check safety */
+    if(map == NULL || key == NULL)
+    {
+        CHASHMAP_LOG("Invalid arguments, map and key can't be NULL");
+        return false;
+    }
+    size_t bucket_index = hash_function(key, map->capacity);
+    chashmap_entry_t *bucket = map->buckets[bucket_index]; /* First entry of the linked list */
+    if (bucket == NULL)
+    {
+        return false;
+    }
+    /* Handle head element deletion */
+    if (strcmp(key, bucket->key) == 0)
+    {
+        /* Link the head to the next node */
+        map->buckets[bucket_index] = bucket->next;
+        /* Remove the node including payload, key and entry wrapper */
+          if (map->free_func)
+          {
+              map->free_func(bucket->value); // Payload
+          }
+          free(bucket->key);
+          free(bucket);
+          bucket = NULL;
+          /* Reduce the size */
+          map->size --;
+          return true;
+    }
+    chashmap_entry_t *next = bucket->next;
+    while(next != NULL)
+    {
+        /* Find target node using the trailing pointer technique */
+        if (strcmp(key, next->key) == 0)
+        {
+            /* Link the current node directly to the node after the target */
+            bucket->next = next->next;
+            /* Free the target node including payload, key, and entry wrapper */
+            if (map->free_func)
+            {
+                map->free_func(next->value); // Payload
+            }
+            free(next->key);
+            free(next);
+            next = NULL;
+            map->size --;
+            return true;
+        }
+        /* Go to next node */
+        bucket = next;
+        next = next->next;
+    }
+    /* Can't find the key */
     return false;
 }
 
+/**
+ * @brief Clean up all data and destroy the entire hash map structure.
+ */
 void chashmap_destroy(chashmap_t *map) {
-    /* Implementation pending */
-    (void)map;
+    if (map == NULL)
+    {
+        return;
+    }
+    /* Destroy buckets */
+    for (size_t i = 0; i < map->capacity; i++)
+    {
+        chashmap_entry_t *bucket = map->buckets[i];
+        while(bucket != NULL)
+        {
+            /* Keep pointer to next befor free */
+            chashmap_entry_t *next = bucket->next;
+            /* Destroy entry node */
+            if(map->free_func)
+            {
+                map->free_func(bucket->value);
+            }
+            free(bucket->key);
+            free(bucket);
+            bucket = next;
+        }
+        map->buckets[i] = NULL; /* Set null for convention despite the buckets also be free */ 
+    }
+    free(map->buckets);
+    map->buckets = NULL;
+    free(map);
+    map = NULL;
     return;
 }
 
@@ -183,13 +281,15 @@ static size_t hash_function(const char *str, size_t modulus) {
     while ((c = *str++)) {
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
     }
-    return hash / modulus;
+    return hash % modulus;
 }
 
 static bool chashmap_rehashing(chashmap_t *map)
 {
     /* Try to allocate more memory for buckets with new capacity */
     size_t new_capacity = map->capacity * 2;
+    CHASHMAP_DEBUG("\n[REHASH] Triggered! Expanding capacity from %zu to %zu\n", map->capacity, new_capacity);
+    
     chashmap_entry_t **new_buckets = calloc(new_capacity, sizeof(struct CHASHMAP_ENTRY*));
     if (new_buckets == NULL)
     {
@@ -208,6 +308,7 @@ static bool chashmap_rehashing(chashmap_t *map)
 
             /* recalculate the new index of entry node */
             size_t new_index = hash_function(bucket->key, new_capacity);
+            CHASHMAP_DEBUG("         Moving '%s' from bucket %zu to %zu\n", bucket->key, i, new_index);
 
             /* Add the current node into the head of new array */ 
             bucket->next = new_buckets[new_index];
