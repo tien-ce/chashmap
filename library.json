@@ -1,0 +1,32 @@
+{
+  "name": "chashmap",
+  "version": "1.0.0",
+  "description": "A lightweight, generic C hashmap implementation with collision-chaining.",
+  "keywords": [
+    "hashmap",
+    "map",
+    "dictionary",
+    "data-structures",
+    "c",
+    "embedded"
+  ],
+  "authors": [
+    {
+      "name": "Tien",
+      "maintainer": true
+    }
+  ],
+  "frameworks": [
+    "arduino",
+    "espidf",
+    "zephyr"
+  ],
+  "platforms": [
+    "*"
+  ],
+  "build": {
+    "flags": [
+      "-Iinclude"
+    ]
+  }
+}
