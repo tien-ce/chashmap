@@ -273,6 +273,42 @@ void chashmap_destroy(chashmap_t *map) {
     return;
 }
 
+/**
+ * @brief Iterate over all key-value pairs inside the hash map.
+ */
+void chashmap_foreach(chashmap_t *map, chashmap_foreach_cb callback, void *user_data)
+{
+    /* Prevent execution if map is invalid or callback is missing */
+    if (map == NULL || map->buckets == NULL || callback == NULL)
+    {
+        return;
+    }
+
+    /* Iterate over the entire allocated buckets array (capacity, not size) */
+    for (size_t i = 0; i < map->capacity; i++)
+    {
+        chashmap_entry_t *bucket = map->buckets[i];
+        
+        /* Traverse the linked list (collision chain) at this bucket */
+        while(bucket != NULL)
+        {
+            const char *key = bucket->key;
+            void *value = bucket->value;
+
+            /* Execute the user's callback function */
+            bool is_continue = callback(key, value, user_data);
+            
+            /* Break out early if the callback returns false */
+            if (!is_continue)
+            {
+                return;
+            }
+            
+            /* Go to the next entry */
+            bucket = bucket->next;
+        }
+    }
+}
 /* -------------------- Internal ultilities definition -------------------- */
 
 static size_t hash_function(const char *str, size_t modulus) {

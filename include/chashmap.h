@@ -24,6 +24,14 @@ typedef struct CHASHMAP_STRUCT chashmap_t;
  */
 typedef void (*chashmap_free_cb)(void *payload);
 
+/**
+ * @brief Callback function type for iterating over hash map entries.
+ * @param key The key string of the current entry (read-only).
+ * @param value The exact opaque payload pointer stored in the hash map.
+ * @param user_data Opaque pointer passed through from chashmap_foreach.
+ * @return true to continue iteration, false to break/stop early.
+ */
+typedef bool (*chashmap_foreach_cb)(const char *key, void *value, void *user_data);
 /* -------------------- Public API -------------------- */
 
 /**
@@ -65,6 +73,13 @@ bool chashmap_remove(chashmap_t *map, const char *key);
  */
 void chashmap_destroy(chashmap_t *map);
 
+/**
+ * @brief Iterate over all key-value pairs inside the hash map.
+ * @param map Pointer to the hash map.
+ * @param callback Function to call for each entry.
+ * @param user_context Opaque pointer to pass external state to the callback.
+ */
+void chashmap_foreach(chashmap_t *map, chashmap_foreach_cb callback, void *user_context);
 #ifdef __cplusplus
 }
 #endif
