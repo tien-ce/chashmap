@@ -29,6 +29,10 @@
  */
 static size_t hash_function(const char *str, size_t modulus);
 static bool chashmap_rehashing(chashmap_t *map);
+/**
+ * @brief Duplicate a string using the map's allocator instead of strdup.
+ */
+static char *chashmap_strdup(chashmap_t *map, const char *str);
 /* -------------------- Internal Data Structures -------------------- */
 
 /**
@@ -49,6 +53,8 @@ struct CHASHMAP_STRUCT {
     size_t size;                   /* Current count of active entries residing in the map */
     size_t capacity;               /* Total allocated length of the buckets array for modulo arithmetic */
     chashmap_free_cb free_func;    /* Destructor callback invoked for payload cleanup */
+    chashmap_calloc_fn calloc;     /* Custom calloc function defined by user */
+    chashmap_free_fn free;         /* Custom free function defined by user */
     chashmap_entry_t **buckets;    /* Dynamic array of pointers serving as the hash table buckets */
 };
 
@@ -56,42 +62,46 @@ struct CHASHMAP_STRUCT {
 /**
  * @brief Allocate and initialize a new Hash Map on the heap.
  */
-chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func) {
+chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_cb, chashmap_calloc_fn mem_calloc, chashmap_free_fn mem_free) {
     if (initial_capacity <= 0)
     {
         initial_capacity = MIN_HASH_SIZE;
     }
+    chashmap_calloc_fn do_calloc = mem_calloc ? mem_calloc : calloc;
+    chashmap_free_fn   do_free   = mem_free   ? mem_free   : free;
     /* Allocate wrapper struct */
-    struct CHASHMAP_STRUCT *map = calloc(1,sizeof(struct CHASHMAP_STRUCT));
+    struct CHASHMAP_STRUCT *map = do_calloc(1, sizeof(struct CHASHMAP_STRUCT));
     if (map == NULL)
     {
         return NULL;
     }
-
+    map->calloc = do_calloc;
+    map->free   = do_free;
     /* Allocate the buckets array. Use calloc to implicitly initialize all pointers to NULL. */
-    map->buckets = calloc(initial_capacity, sizeof(chashmap_entry_t*));
+    map->buckets = map->calloc(initial_capacity, sizeof(chashmap_entry_t*));
     if (map->buckets == NULL)
     {
-        free(map);
+        map->free(map);
         return NULL;
     }
 
     /* Write initialized metadata */
     map->size = 0;
     map->capacity = initial_capacity;
-    map->free_func = free_func;
+    map->free_func = free_cb;
     return map;
 }
 
 /**
- * @brief Insert or update a key-value pair in the hash map.
+ * @brief Insert or update a key-value pair in the hash map
+ * If the function return false, the caller reclaim the own of value.
  */
-void chashmap_set(chashmap_t *map, const char *key, void *value) {
+bool chashmap_set(chashmap_t *map, const char *key, void *value) {
     /* Check safety */
     if (map == NULL || key == NULL)
     {
         CHASHMAP_LOG("Invalid parameter, map table and key can't be NULL\n");
-        return;
+        return false;
     }
     /* Check load factor */
     if (map->size * 4 >= map->capacity * 3)
@@ -102,7 +112,7 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
         {
             /* If can't rehashing, abort the request */
             CHASHMAP_LOG("Can't rehashing table, abort setting value\n");
-            return;
+            return false;
         }
     }
     /* calculate the hash code and apply modulo to get the bucket index */
@@ -125,7 +135,7 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
             }
             /* Assign new value */
             bucket->value = value;
-            return;
+            return true;
         }
         CHASHMAP_DEBUG("      -> Collision detected, moving to next entry in bucket %zu.\n", bucket_index);
         /* move to next entry */
@@ -133,12 +143,18 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
     }
     
     /* Insertion logic: key not found, create new node */
-    chashmap_entry_t *new_entry = calloc(1, sizeof(chashmap_entry_t));
+    chashmap_entry_t *new_entry = map->calloc(1, sizeof(chashmap_entry_t));
     if (new_entry == NULL) {
         CHASHMAP_LOG("Can't allocate memory for new entry\n");
-        return;
+        return false;
     }
-    new_entry->key = strdup(key);
+    new_entry->key = chashmap_strdup(map, key);
+    if (new_entry->key == NULL)
+    {
+        CHASHMAP_LOG("Can't allocate memory for new entry key\n");
+        map->free(new_entry);
+        return false;
+    }
     new_entry->value = value;
     
     /* Insert at head of the bucket */
@@ -146,6 +162,7 @@ void chashmap_set(chashmap_t *map, const char *key, void *value) {
     map->buckets[bucket_index] = new_entry;
     map->size++;
     CHASHMAP_DEBUG("      -> Inserted new node '%s' at head of bucket %zu.\n", key, bucket_index);
+    return true;
 }
 
 /**
@@ -205,8 +222,8 @@ bool chashmap_remove(chashmap_t *map, const char *key) {
           {
               map->free_func(bucket->value); // Payload
           }
-          free(bucket->key);
-          free(bucket);
+          map->free(bucket->key);
+          map->free(bucket);
           bucket = NULL;
           /* Reduce the size */
           map->size --;
@@ -225,8 +242,8 @@ bool chashmap_remove(chashmap_t *map, const char *key) {
             {
                 map->free_func(next->value); // Payload
             }
-            free(next->key);
-            free(next);
+            map->free(next->key);
+            map->free(next);
             next = NULL;
             map->size --;
             return true;
@@ -260,15 +277,15 @@ void chashmap_destroy(chashmap_t *map) {
             {
                 map->free_func(bucket->value);
             }
-            free(bucket->key);
-            free(bucket);
+            map->free(bucket->key);
+            map->free(bucket);
             bucket = next;
         }
         map->buckets[i] = NULL; /* Set null for convention despite the buckets also be free */ 
     }
-    free(map->buckets);
+    map->free(map->buckets);
     map->buckets = NULL;
-    free(map);
+    map->free(map);
     map = NULL;
     return;
 }
@@ -326,7 +343,7 @@ static bool chashmap_rehashing(chashmap_t *map)
     size_t new_capacity = map->capacity * 2;
     CHASHMAP_DEBUG("\n[REHASH] Triggered! Expanding capacity from %zu to %zu\n", map->capacity, new_capacity);
     
-    chashmap_entry_t **new_buckets = calloc(new_capacity, sizeof(struct CHASHMAP_ENTRY*));
+    chashmap_entry_t **new_buckets = map->calloc(new_capacity, sizeof(struct CHASHMAP_ENTRY*));
     if (new_buckets == NULL)
     {
         return false;
@@ -354,9 +371,22 @@ static bool chashmap_rehashing(chashmap_t *map)
         }
     }
     /* Free the old bucket lists */
-    free(map->buckets);
+    map->free(map->buckets);
     /* Assign new buckets and new cap */
     map->buckets = new_buckets;
     map->capacity = new_capacity;
-    return true; 
+    return true;
+}
+
+static char *chashmap_strdup(chashmap_t *map, const char *str)
+{
+    /* Include the null terminator */
+    size_t len = strlen(str) + 1;
+    char *copy = map->calloc(len, sizeof(char));
+    if (copy == NULL)
+    {
+        return NULL;
+    }
+    memcpy(copy, str, len);
+    return copy;
 }

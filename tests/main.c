@@ -14,13 +14,19 @@ void free_payload_string(void *payload) {
     }
 }
 
+void *(cst_calloc) (size_t nmemb, size_t size)
+{
+    printf("custom alloc\n");
+    return calloc(nmemb, size);
+}
+
 int main(void) {
     printf("=========================================\n");
     printf("   CHASHMAP COMPREHENSIVE TEST SCRIPT    \n");
     printf("=========================================\n");
 
     /* 1. Test chashmap_create */
-    chashmap_t *map = chashmap_create(4, free_payload_string);
+    chashmap_t *map = chashmap_create(4, free_payload_string, cst_calloc, NULL);
     if (!map) {
         printf("Error: Failed to initialize hash map!\n");
         return 1;
