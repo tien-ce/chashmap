@@ -21,8 +21,10 @@ typedef struct CHASHMAP_STRUCT chashmap_t;
  * @brief Destructor callback function pointer.
  * Automatically invoked by the library on the payload parameter when an element
  * is overwritten, removed, or when the entire map is destroyed.
+ * @param payload The payload pointer to be released.
+ * @param user_data Opaque context pointer passed to chashmap_create.
  */
-typedef void (*chashmap_free_cb)(void *payload);
+typedef void (*chashmap_free_cb)(void *payload, void *user_data);
 
 /**
  * @brief Memory allocator passed from outside.
@@ -44,11 +46,12 @@ typedef bool (*chashmap_foreach_cb)(const char *key, void *value, void *user_dat
  * @brief Allocate and initialize a new Hash Map on the heap.
  * @param initial_capacity Initial capacity of the buckets array.
  * @param free_func Callback for payload deallocation (can be NULL).
+ * @param user_data Opaque context pointer forwarded to free_func (can be NULL).
  * @param mem_calloc Custom calloc function defined by user (NULL to use stdlib calloc).
  * @param mem_free Custom free function defined by user (NULL to use stdlib free).
  * @return Pointer to the initialized hash map.
  */
-chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func, chashmap_calloc_fn mem_calloc, chashmap_free_fn mem_free);
+chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func, void *user_data, chashmap_calloc_fn mem_calloc, chashmap_free_fn mem_free);
 
 /**
  * @brief Insert or update a key-value pair, if return false, the value belong to caller.

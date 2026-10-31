@@ -53,6 +53,7 @@ struct CHASHMAP_STRUCT {
     size_t size;                   /* Current count of active entries residing in the map */
     size_t capacity;               /* Total allocated length of the buckets array for modulo arithmetic */
     chashmap_free_cb free_func;    /* Destructor callback invoked for payload cleanup */
+    void *free_user_data;          /* User context forwarded to the destructor callback */
     chashmap_calloc_fn calloc;     /* Custom calloc function defined by user */
     chashmap_free_fn free;         /* Custom free function defined by user */
     chashmap_entry_t **buckets;    /* Dynamic array of pointers serving as the hash table buckets */
@@ -62,7 +63,7 @@ struct CHASHMAP_STRUCT {
 /**
  * @brief Allocate and initialize a new Hash Map on the heap.
  */
-chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_cb, chashmap_calloc_fn mem_calloc, chashmap_free_fn mem_free) {
+chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_cb, void *user_data, chashmap_calloc_fn mem_calloc, chashmap_free_fn mem_free) {
     if (initial_capacity <= 0)
     {
         initial_capacity = MIN_HASH_SIZE;
@@ -89,6 +90,7 @@ chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_cb, c
     map->size = 0;
     map->capacity = initial_capacity;
     map->free_func = free_cb;
+    map->free_user_data = user_data;
     return map;
 }
 
@@ -131,7 +133,7 @@ bool chashmap_set(chashmap_t *map, const char *key, void *value) {
             CHASHMAP_DEBUG("      -> Key '%s' exists, updating value.\n", key);
             /* Free old value by user destructor define */
             if (map->free_func) {
-                map->free_func(bucket->value);
+                map->free_func(bucket->value, map->free_user_data);
             }
             /* Assign new value */
             bucket->value = value;
@@ -220,7 +222,7 @@ bool chashmap_remove(chashmap_t *map, const char *key) {
         /* Remove the node including payload, key and entry wrapper */
           if (map->free_func)
           {
-              map->free_func(bucket->value); // Payload
+              map->free_func(bucket->value, map->free_user_data); // Payload
           }
           map->free(bucket->key);
           map->free(bucket);
@@ -240,7 +242,7 @@ bool chashmap_remove(chashmap_t *map, const char *key) {
             /* Free the target node including payload, key, and entry wrapper */
             if (map->free_func)
             {
-                map->free_func(next->value); // Payload
+                map->free_func(next->value, map->free_user_data); // Payload
             }
             map->free(next->key);
             map->free(next);
@@ -275,7 +277,7 @@ void chashmap_destroy(chashmap_t *map) {
             /* Destroy entry node */
             if(map->free_func)
             {
-                map->free_func(bucket->value);
+                map->free_func(bucket->value, map->free_user_data);
             }
             map->free(bucket->key);
             map->free(bucket);

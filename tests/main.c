@@ -7,7 +7,8 @@
  * Dummy callback simulating payload deallocation.
  * Assumes payload is a dynamically allocated string for this test.
  */
-void free_payload_string(void *payload) {
+void free_payload_string(void *payload, void *user_data) {
+    (void)user_data;
     if (payload) {
         printf("[Test] Freeing payload: %s\n", (char*)payload);
         free(payload);
@@ -26,7 +27,7 @@ int main(void) {
     printf("=========================================\n");
 
     /* 1. Test chashmap_create */
-    chashmap_t *map = chashmap_create(4, free_payload_string, cst_calloc, NULL);
+    chashmap_t *map = chashmap_create(4, free_payload_string, NULL, cst_calloc, NULL);
     if (!map) {
         printf("Error: Failed to initialize hash map!\n");
         return 1;
