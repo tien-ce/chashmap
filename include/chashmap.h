@@ -25,6 +25,12 @@ typedef struct CHASHMAP_STRUCT chashmap_t;
 typedef void (*chashmap_free_cb)(void *payload);
 
 /**
+ * @brief Memory allocator passed from outside.
+ * Used if the caller want to use custom allocator instead of C standard.
+ */
+typedef void* (*chashmap_calloc_fn)(size_t nmemb, size_t size);
+typedef void  (*chashmap_free_fn)(void *ptr);
+/**
  * @brief Callback function type for iterating over hash map entries.
  * @param key The key string of the current entry (read-only).
  * @param value The exact opaque payload pointer stored in the hash map.
@@ -38,18 +44,21 @@ typedef bool (*chashmap_foreach_cb)(const char *key, void *value, void *user_dat
  * @brief Allocate and initialize a new Hash Map on the heap.
  * @param initial_capacity Initial capacity of the buckets array.
  * @param free_func Callback for payload deallocation (can be NULL).
+ * @param mem_calloc Custom calloc function defined by user (NULL to use stdlib calloc).
+ * @param mem_free Custom free function defined by user (NULL to use stdlib free).
  * @return Pointer to the initialized hash map.
  */
-chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func);
+chashmap_t *chashmap_create(size_t initial_capacity, chashmap_free_cb free_func, chashmap_calloc_fn mem_calloc, chashmap_free_fn mem_free);
 
 /**
- * @brief Insert or update a key-value pair.
+ * @brief Insert or update a key-value pair, if return false, the value belong to caller.
  * The key string is automatically duplicated to ensure independent ownership.
  * @param map Pointer to the hash map.
  * @param key Identifier string.
  * @param value Void pointer carrying the payload data.
+ * @return true if set successfully
  */
-void chashmap_set(chashmap_t *map, const char *key, void *value);
+bool chashmap_set(chashmap_t *map, const char *key, void *value);
 
 /**
  * @brief Retrieve payload data based on the key.
